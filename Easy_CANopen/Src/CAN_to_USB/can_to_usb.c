@@ -123,26 +123,45 @@ STATUS_CODE QT_USB_Transmit(uint16_t CAN_ID, uint8_t data[], uint8_t DLC) {
  * @return STATUS_CODE 수신 상태 코드
  */
 STATUS_CODE QT_USB_Get_ID_Data(uint16_t *COB_ID, uint8_t data[], bool *is_new_message) {
-    // USB 인터페이스가 초기화되지 않았으면 초기화 시도
-    if (!usb_interface_initialized) {
-        if (!Initialize_USB_Interface()) {
+    // CAN 인터페이스가 초기화되지 않았으면 초기화 시도
+    if (can_socket < 0) {
+        if (!Initialize_CAN_Interface()) {
             return STATUS_CODE_ERROR_INITIALIZATION;
         }
-    }
+    }    
+    struct can_frame frame;
+    struct timeval tv = {0, 0}; // 논블로킹 모드를 위한 타임아웃 설정
+    fd_set readSet;
+    FD_ZERO(&readSet);
+    FD_SET(can_socket, &readSet);
 
-    // USB로부터 데이터 수신 로직 구현
-    // 실제 USB 수신 로직에 맞게 수정해야 함
-    // 예시로 가상의 데이터 수신
-    // 이 부분을 실제 데이터 수신 로직으로 대체해야 합니다
-    
-    // 수신 성공 가정
-    *COB_ID = 0x123; // 예시 COB-ID
-    for (uint8_t i = 0; i < 8; i++) {
-        data[i] = i; // 예시 데이터
-    }
-    *is_new_message = true;
+    int retval = select(can_socket + 1, &readSet, NULL, NULL, &tv);
+    if (retval > 0) {
+        ssize_t bytes_read = read(can_socket, &frame, sizeof(struct can_frame));
+        if (bytes_read < 0) {
+            perror("CAN 메시지 수신 실패");
+            return STATUS_CODE_ERROR_RECEIVE;
+        }
 
-    return STATUS_CODE_SUCCESSFUL;
+        *COB_ID = frame.can_id;
+        memcpy(data, frame.data, frame.can_dlc);
+        *is_new_message = true;
+
+        printf("SocketCAN으로 데이터 수신: CAN ID=0x%X, DLC=%d, 데이터=", frame.can_id, frame.can_dlc);
+        for (int i = 0; i < frame.can_dlc; i++) {
+            printf("%02X ", frame.data[i]);
+        }
+        printf("\n");
+
+        return STATUS_CODE_SUCCESSFUL;
+    } else if (retval == 0) {
+        // 타임아웃: 새로운 메시지 없음
+        *is_new_message = false;
+        return STATUS_CODE_SUCCESSFUL;
+    } else {
+        perror("select 오류");
+        return STATUS_CODE_ERROR_RECEIVE;
+    }
 }
 
 /**
