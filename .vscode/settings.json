@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "can_to_usb.h": "c",
+        "array": "c",
+        "string": "c",
+        "string_view": "c",
+        "unistd.h": "c",
+        "stdint.h": "c",
+        "ioctl.h": "c"
+    }
+}
